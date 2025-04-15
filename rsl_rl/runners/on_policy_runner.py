@@ -85,6 +85,8 @@ class OnPolicyRunner:
             self.alg_cfg["rnd_cfg"]["num_states"] = num_rnd_state
             # scale down the rnd weight with timestep (similar to how rewards are scaled down in legged_gym envs)
             self.alg_cfg["rnd_cfg"]["weight"] *= env.unwrapped.step_dt
+        elif "info_reward_cfg" in self.alg_cfg and self.alg_cfg["info_reward_cfg"] is not None: 
+            raise NotImplementedError
 
         # if using symmetry then pass the environment config object
         if "symmetry_cfg" in self.alg_cfg and self.alg_cfg["symmetry_cfg"] is not None:
@@ -177,7 +179,7 @@ class OnPolicyRunner:
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
         # create buffers for logging extrinsic and intrinsic rewards
-        if self.alg.rnd:
+        if self.alg.rnd or self.alg.info_reward:
             erewbuffer = deque(maxlen=100)
             irewbuffer = deque(maxlen=100)
             cur_ereward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
@@ -217,7 +219,7 @@ class OnPolicyRunner:
                     self.alg.process_env_step(rewards, dones, infos)
 
                     # Extract intrinsic rewards (only for logging)
-                    intrinsic_rewards = self.alg.intrinsic_rewards if self.alg.rnd else None
+                    intrinsic_rewards = self.alg.intrinsic_rewards if self.alg.rnd or self.alg.info_reward else None
 
                     # book keeping
                     if self.log_dir is not None:
@@ -226,7 +228,7 @@ class OnPolicyRunner:
                         elif "log" in infos:
                             ep_infos.append(infos["log"])
                         # Update rewards
-                        if self.alg.rnd:
+                        if self.alg.rnd or self.alg.info_reward:
                             cur_ereward_sum += rewards
                             cur_ireward_sum += intrinsic_rewards  # type: ignore
                             cur_reward_sum += rewards + intrinsic_rewards
@@ -242,7 +244,7 @@ class OnPolicyRunner:
                         cur_reward_sum[new_ids] = 0
                         cur_episode_length[new_ids] = 0
                         # -- intrinsic and extrinsic rewards
-                        if self.alg.rnd:
+                        if self.alg.rnd or self.alg.info_reward:
                             erewbuffer.extend(cur_ereward_sum[new_ids][:, 0].cpu().numpy().tolist())
                             irewbuffer.extend(cur_ireward_sum[new_ids][:, 0].cpu().numpy().tolist())
                             cur_ereward_sum[new_ids] = 0
@@ -339,6 +341,9 @@ class OnPolicyRunner:
                 self.writer.add_scalar("Rnd/mean_extrinsic_reward", statistics.mean(locs["erewbuffer"]), locs["it"])
                 self.writer.add_scalar("Rnd/mean_intrinsic_reward", statistics.mean(locs["irewbuffer"]), locs["it"])
                 self.writer.add_scalar("Rnd/weight", self.alg.rnd.weight, locs["it"])
+            elif self.alg.info_reward:
+                self.writer.add_scalar("InfoReward/mean_extrinsic_reward", statistics.mean(locs["erewbuffer"]), locs["it"])
+                self.writer.add_scalar("InfoReward/mean_intrinsic_reward", statistics.mean(locs["irewbuffer"]), locs["it"])
             # everything else
             self.writer.add_scalar("Train/mean_reward", statistics.mean(locs["rewbuffer"]), locs["it"])
             self.writer.add_scalar("Train/mean_episode_length", statistics.mean(locs["lenbuffer"]), locs["it"])
@@ -362,7 +367,7 @@ class OnPolicyRunner:
             for key, value in locs["loss_dict"].items():
                 log_string += f"""{f'Mean {key} loss:':>{pad}} {value:.4f}\n"""
             # -- Rewards
-            if self.alg.rnd:
+            if self.alg.rnd or self.alg.info_reward:
                 log_string += (
                     f"""{'Mean extrinsic reward:':>{pad}} {statistics.mean(locs['erewbuffer']):.2f}\n"""
                     f"""{'Mean intrinsic reward:':>{pad}} {statistics.mean(locs['irewbuffer']):.2f}\n"""
@@ -404,6 +409,7 @@ class OnPolicyRunner:
         if self.alg.rnd:
             saved_dict["rnd_state_dict"] = self.alg.rnd.state_dict()
             saved_dict["rnd_optimizer_state_dict"] = self.alg.rnd_optimizer.state_dict()
+        # Warning: Not saving information reward occupancy estimator parameters.
         # -- Save observation normalizer if used
         if self.empirical_normalization:
             saved_dict["obs_norm_state_dict"] = self.obs_normalizer.state_dict()
@@ -423,6 +429,7 @@ class OnPolicyRunner:
         # -- Load RND model if used
         if self.alg.rnd:
             self.alg.rnd.load_state_dict(loaded_dict["rnd_state_dict"])
+        # Warning: Not loading information reward occupancy estimator parameters.
         # -- Load observation normalizer if used
         if self.empirical_normalization:
             if resumed_training:

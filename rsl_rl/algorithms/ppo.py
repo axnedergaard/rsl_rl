@@ -41,6 +41,8 @@ class PPO:
         normalize_advantage_per_mini_batch=False,
         # RND parameters
         rnd_cfg: dict | None = None,
+        # Information reward parameters
+        info_reward_cfg: dict | None = None,
         # Symmetry parameters
         symmetry_cfg: dict | None = None,
         # Distributed training parameters
@@ -64,9 +66,12 @@ class PPO:
             # Create RND optimizer
             params = self.rnd.predictor.parameters()
             self.rnd_optimizer = optim.Adam(params, lr=rnd_cfg.get("learning_rate", 1e-3))
+        elif info_reward_cfg is not None:
+            raise NotImplementedError
         else:
             self.rnd = None
             self.rnd_optimizer = None
+            # TODO: Information rewards
 
         # Symmetry components
         if symmetry_cfg is not None:
@@ -119,6 +124,8 @@ class PPO:
         # create memory for RND as well :)
         if self.rnd:
             rnd_state_shape = [self.rnd.num_states]
+        elif self.info_reward:
+            rnd_state_shape = [self.info_reward.num_states]
         else:
             rnd_state_shape = None
         # create rollout storage
@@ -154,12 +161,13 @@ class PPO:
         self.transition.dones = dones
 
         # Compute the intrinsic rewards and add to extrinsic rewards
-        if self.rnd:
+        if self.rnd or self.info_reward:
+            reward_module = self.rnd if self.rnd else self.info_reward
             # Obtain curiosity gates / observations from infos
             rnd_state = infos["observations"]["rnd_state"]
             # Compute the intrinsic rewards
             # note: rnd_state is the gated_state after normalization if normalization is used
-            self.intrinsic_rewards, rnd_state = self.rnd.get_intrinsic_reward(rnd_state)
+            self.intrinsic_rewards, rnd_state = reward_module.get_intrinsic_reward(rnd_state)
             # Add intrinsic rewards to extrinsic rewards
             self.transition.rewards += self.intrinsic_rewards
             # Record the curiosity gates
@@ -387,6 +395,9 @@ class PPO:
             # -- For RND
             if self.rnd_optimizer:
                 self.rnd_optimizer.step()
+
+            if self.info_reward:
+                raise NotImplementedError
 
             # Store the losses
             mean_value_loss += value_loss.item()

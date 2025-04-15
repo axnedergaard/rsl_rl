@@ -1,5 +1,5 @@
 import torch
-import information_reward
+from rsl_rl.modules import information_reward
 
 class InformationReward:
     def __init__(
@@ -47,5 +47,5 @@ class InformationReward:
 
     def update(self, states):
         """Update occupancy density estimate from batch of states."""
-        with torch.no_grade():
+        with torch.no_grad():
             self.density.learn(states)

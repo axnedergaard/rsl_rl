@@ -88,7 +88,7 @@ class OnPolicyRunner:
         elif "info_reward_cfg" in self.alg_cfg and self.alg_cfg["info_reward_cfg"] is not None:
             rnd_state = extras["observations"].get("rnd_state")
             num_rnd_state = rnd_state.shape[1]
-            self.alg_cfg["info_reward_cfg"]["dim"] = num_rnd_state
+            self.alg_cfg["info_reward_cfg"]["num_states"] = num_rnd_state
 
         # if using symmetry then pass the environment config object
         if "symmetry_cfg" in self.alg_cfg and self.alg_cfg["symmetry_cfg"] is not None:

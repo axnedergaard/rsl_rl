@@ -72,6 +72,7 @@ class PPO:
             # Create information reward module.
             self.info_reward = InformationReward(device=self.device, **info_reward_cfg)
             self.rnd = None
+            self.rnd_optimizer = None
         else:
             self.rnd = None
             self.info_reward = None

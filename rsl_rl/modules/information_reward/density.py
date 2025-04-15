@@ -1,4 +1,5 @@
 import torch
+from .information_geometry import InformationGeometry
 
 class Density():
     """
@@ -9,10 +10,11 @@ class Density():
     compute entropy and learn the density from given states.
     """
 
-    def __init__(self, dim: int) -> None:
+    def __init__(self, dim: int, information_geometry: InformationGeometry) -> None:
         assert dim > 0, "Dimension must be positive."
         self.dim = dim
         self.ready = True # Special variable used by DensityRewarder. 
+        self.information_geometry = information_geometry
     
     def pdf(self, x: torch.Tensor) -> float:
         """
@@ -53,7 +55,7 @@ class Density():
         Args: x (torch.Tensor): Point at which to compute the information.
         Returns: float: Information value.
         """
-        return -torch.log(self.pdf(x))
+        raise NotImplementedError()
 
     def compute_entropy(self, states: torch.Tensor) -> float:
         """

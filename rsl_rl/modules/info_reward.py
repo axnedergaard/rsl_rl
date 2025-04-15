@@ -1,3 +1,4 @@
+import torch
 import information_reward
 
 class InformationReward:
@@ -14,7 +15,6 @@ class InformationReward:
 
         self.num_states = num_states
         self.weight = weight
-        self.device = device
 
         # Initialize information geometry.
         info_geom_cls_name = info_geom_cfg.pop('cls_name')
@@ -22,7 +22,7 @@ class InformationReward:
             information_reward, 
             info_geom_cls_name
         )
-        info_geom = info_geom_cls(*info_geom_cfg)
+        info_geom = info_geom_cls(**info_geom_cfg)
 
         # Initialize occupancy estimator.
         density_cls_name = density_cfg.pop('cls_name')
@@ -31,16 +31,17 @@ class InformationReward:
             density_cls_name,
         )
         self.density = density_cls(
-            *density_cfg,
+            **density_cfg,
             dim = num_states, 
             information_geometry = info_geom,
-            geometry = information_reward.EuclideanGeometry(num_states)
+            geometry = information_reward.EuclideanGeometry(num_states),
             device = device,
         )
 
     def get_intrinsic_reward(self, states) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute intrinsic reward for batch of states."""
         intrinsic_rewards = self.density.information(states)
+        intrinsic_rewards *= self.weights
         return intrinsic_rewards, states
 
     def update(self, states):

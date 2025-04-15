@@ -15,6 +15,7 @@ class KNNDensityEstimator(Density):
       information_geometry: InformationGeometry,
       rolling_average: bool = True,
     ):
+      Density.__init__(self, dim, information_geometry)
       self.k = k
       self.dim = dim
       self.buffer_max_size = buffer_max_size
@@ -22,7 +23,6 @@ class KNNDensityEstimator(Density):
       self.buffer_size = 0
       self.rolling_average = rolling_average 
       self.geometry = geometry
-      self.information_geometry = information_geometry
       self.ready = False
 
     @torch.no_grad()

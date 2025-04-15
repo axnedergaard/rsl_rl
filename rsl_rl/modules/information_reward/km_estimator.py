@@ -28,7 +28,7 @@ class KMDensityEstimator(Density, Learner):
         dtype: torch.dtype = torch.float32,
         buffer_size: int = 1000,
     ):
-        Density.__init__(self, dim)
+        Density.__init__(self, dim, information_geometry)
         Learner.__init__(self, dim, buffer_size)
 
         if not isinstance(k, int) or k <= 0:
@@ -66,7 +66,6 @@ class KMDensityEstimator(Density, Learner):
         self.bs: float = balancing_strength
         self.homeostasis: bool = homeostasis
         self.force_sparse: bool = force_sparse
-        self.information_geometry = information_geometry
 
         # Underlying manifold geometry functions
         self.geometry = geometry
@@ -219,11 +218,12 @@ class KMDensityEstimator(Density, Learner):
         if self.init_method == 'zeros':
             return self.origin.repeat(self.k, 1)
         elif self.init_method == 'uniform':
-          if isinstance(self.geometry, Manifold): # This is very hacky.
-            assert self.geometry.sampler['name'] == 'uniform'
-            return torch.Tensor(self.geometry.sample(self.k))
-          else:
-            return 2 * torch.rand((self.k, self.dim), dtype=self.dtype, device=self.device) - 1
+          #if isinstance(self.geometry, Manifold): # This is very hacky.
+          #  assert self.geometry.sampler['name'] == 'uniform'
+          #  return torch.Tensor(self.geometry.sample(self.k))
+          #else:
+          #  return 2 * torch.rand((self.k, self.dim), dtype=self.dtype, device=self.device) - 1
+          return 2 * torch.rand((self.k, self.dim), dtype=self.dtype, device=self.device) - 1
         elif self.init_method == 'gaussian':
             assert not isinstance(self.geometry, Manifold)
             cov = torch.eye(self.dim, dtype=self.dtype, device=self.device)

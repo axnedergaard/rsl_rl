@@ -350,7 +350,7 @@ class KMDensityEstimator(Density, Learner):
             if n_pathological == 1:
                 pathological_idx = pathological_idx.unsqueeze(0)
 
-            patho_diameters = torch.zeros(n_pathological, dtype=self.dtype, device=self.device)
+            patho_diameters = torch.zeros(n_pathological, device=self.device)
             patho_closest_idx = torch.zeros(n_pathological, dtype=torch.long, device=self.device)
 
             for i, idx in enumerate(pathological_idx):

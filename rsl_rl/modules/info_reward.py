@@ -7,7 +7,7 @@ class InformationReward:
         num_states: int,
         density_cfg: dict,
         info_geom_cfg: dict,
-        weight: float = 0.0,
+        weight: float = 1.0,
         device: str = "cpu",
         # TODO: state_normalization, reward_normalization, weight_schedule
     ):
@@ -40,8 +40,9 @@ class InformationReward:
 
     def get_intrinsic_reward(self, states) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute intrinsic reward for batch of states."""
-        intrinsic_rewards = self.density.information(states)
-        intrinsic_rewards *= self.weights
+        with torch.no_grad():
+            intrinsic_rewards = self.density.information(states)
+        intrinsic_rewards *= self.weight
         return intrinsic_rewards, states
 
     def update(self, states):

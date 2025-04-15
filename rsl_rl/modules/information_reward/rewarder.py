@@ -1,6 +1,5 @@
 from torch import Tensor, FloatTensor
 
-
 class Rewarder:
     """
     A class representing a reward mechanism for given states.

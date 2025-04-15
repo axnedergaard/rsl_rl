@@ -1,16 +1,12 @@
-from rum.density.density import Density
-from rum.information_geometry import InformationGeometry
-from rum.learner.learner import Learner
-from rum.geometry import Geometry
-from rum.manifold import Manifold # Needed for initialization under natural geometry.
+from .density import Density
+from .information_geometry import InformationGeometry
+from .learner import Learner
+from .geometry import Geometry
 from torch import Tensor, LongTensor, FloatTensor
 from typing import Union, Optional, Tuple
 import numpy as np
 import torch
 import os
-
-# Only entropy-related computations need gradients (for meta learning
-# information geometry).
 
 class KMDensityEstimator(Density, Learner):
 

@@ -1,5 +1,5 @@
-from rum.rewarder.rewarder import Rewarder
-from rum.density import Density 
+from .rewarder import Rewarder
+from .density import Density 
 from torch import Tensor, FloatTensor
 import torch
 

@@ -1,12 +1,9 @@
 import torch
 from torch import Tensor
 
-from rum.density import Density
-from rum.geometry import Geometry
-from rum.information_geometry import InformationGeometry
-
-# Only entropy-related computations need gradients (for meta learning
-# information geometry).
+from .density import Density
+from .geometry import Geometry
+from .information_geometry import InformationGeometry
 
 class KNNDensityEstimator(Density):
     def __init__(

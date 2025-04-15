@@ -19,13 +19,13 @@ class KNNDensityEstimator(Density):
       Density.__init__(self, dim, information_geometry)
       self.k = k
       self.dim = dim
-      self.buffer_max_size = buffer_max_size
-      self.buffer = torch.zeros((buffer_max_size, dim))
-      self.buffer_size = 0
+      self.device = device
       self.rolling_average = rolling_average 
       self.geometry = geometry
       self.ready = False
-      self.device = device # TODO. Properly integrate in code.
+      self.buffer_max_size = buffer_max_size
+      self.buffer = torch.zeros((buffer_max_size, dim), device=self.device)
+      self.buffer_size = 0
 
     @torch.no_grad()
     def learn(self, states: Tensor) -> None:
@@ -36,7 +36,7 @@ class KNNDensityEstimator(Density):
           self.ready = True
       else:  # In this case, we reset the buffer every time.
         assert not states.size(0) < self.k, 'Not enough states to not use rolling average.'
-        self.buffer = torch.zeros((self.buffer_max_size, self.dim))
+        self.buffer = torch.zeros((self.buffer_max_size, self.dim), device=self.device)
         self.buffer_size = 0
         self.update_buffer(states, inplace=True)
         self.ready = True
@@ -96,7 +96,7 @@ class KNNDensityEstimator(Density):
         if self.rolling_average:
           buffer = self.buffer.clone()
         else:
-          buffer = torch.zeros((buffer_max_size, dim))
+          buffer = torch.zeros((buffer_max_size, dim), device=self.device)
 
       # Compute the number of slots available in the buffer.
       num_free_slots = self.buffer_max_size - self.buffer_size
@@ -107,7 +107,7 @@ class KNNDensityEstimator(Density):
         # First add some of states to free slots. 
         buffer[self.buffer_size : self.buffer_size + num_free_slots] = states[:num_free_slots]
         # Then randomly replace slots with the remaining states.
-        drop_idx = torch.randperm(self.buffer_size)[:size_overflow]
+        drop_idx = torch.randperm(self.buffer_size, device=self.device)[:size_overflow]
         buffer[drop_idx] = states[num_free_slots:]
         buffer_size = self.buffer_max_size
         if inplace:

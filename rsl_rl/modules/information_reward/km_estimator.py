@@ -25,7 +25,6 @@ class KMDensityEstimator(Density, Learner):
         init_method: str = 'uniform',
         origin: Union[Tensor, np.ndarray] = None,
         device: torch.device = torch.device('cpu'),
-        dtype: torch.dtype = torch.float32,
         buffer_size: int = 1000,
     ):
         Density.__init__(self, dim, information_geometry)
@@ -47,7 +46,6 @@ class KMDensityEstimator(Density, Learner):
         self.num_passes = 10 if rolling_average else 1
         self.shuffle = shuffle
         self.device: torch.device = device
-        self.dtype: torch.dtype = dtype
 
         if device == torch.device('cuda'):
             self.num_cuda_cores_per_device = 1024  # varies by GPU
@@ -59,7 +57,7 @@ class KMDensityEstimator(Density, Learner):
         # Initialization
         self.init_method: str = init_method
         self.origin = origin if origin is not None else \
-            torch.zeros((1, self.dim), dtype=self.dtype, device=self.device)
+            torch.zeros((1, self.dim), device=self.device)
 
         # Hyperparameters
         self.lr: float = learning_rate
@@ -106,7 +104,7 @@ class KMDensityEstimator(Density, Learner):
 
         for pass_idx in range(self.num_passes):
             if self.shuffle:
-                shuffled_idxs = torch.randperm(B)
+                shuffled_idxs = torch.randperm(B, device=self.device)
                 states = states[shuffled_idxs] # (B, dim)
         
             if B <= k or self.force_sparse:
@@ -222,10 +220,10 @@ class KMDensityEstimator(Density, Learner):
           #  return torch.Tensor(self.geometry.sample(self.k))
           #else:
           #  return 2 * torch.rand((self.k, self.dim), dtype=self.dtype, device=self.device) - 1
-          return 2 * torch.rand((self.k, self.dim), dtype=self.dtype, device=self.device) - 1
+          return 2 * torch.rand((self.k, self.dim), device=self.device) - 1
         elif self.init_method == 'gaussian':
             assert not isinstance(self.geometry, Manifold)
-            cov = torch.eye(self.dim, dtype=self.dtype, device=self.device)
+            cov = torch.eye(self.dim, device=self.device)
             return torch.distributions.MultivariateNormal(self.origin, cov).sample((self.k,)).clamp(-1, 1)
 
     @torch.no_grad()
@@ -256,7 +254,8 @@ class KMDensityEstimator(Density, Learner):
             raise ValueError("States must be of shape (B, dim)")
         
         batch_size = states.shape[0]
-        distances, closest_idx = torch.zeros((batch_size)), torch.zeros((batch_size), dtype=torch.long)
+        distances = torch.zeros((batch_size), device=self.device)
+        closest_idx = torch.zeros((batch_size), dtype=torch.long, device=self.device)
 
         for i, s in enumerate(states):
             ds = self._weighted_distance(s) # (k,)

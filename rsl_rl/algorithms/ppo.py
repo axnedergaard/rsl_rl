@@ -66,13 +66,15 @@ class PPO:
             # Create RND optimizer
             params = self.rnd.predictor.parameters()
             self.rnd_optimizer = optim.Adam(params, lr=rnd_cfg.get("learning_rate", 1e-3))
+            self.info_reward = None
         elif info_reward_cfg is not None:
-            raise NotImplementedError
+            # Create information reward module.
+            self.info_reward = InformationReward(device=self.device, **info_reward_cfg)
+            self.rnd = None
         else:
             self.rnd = None
             self.info_reward = None
             self.rnd_optimizer = None
-            # TODO: Information rewards
 
         # Symmetry components
         if symmetry_cfg is not None:
@@ -398,7 +400,7 @@ class PPO:
                 self.rnd_optimizer.step()
 
             if self.info_reward:
-                raise NotImplementedError
+                self.info_reward.update(rnd_state_batch)
 
             # Store the losses
             mean_value_loss += value_loss.item()

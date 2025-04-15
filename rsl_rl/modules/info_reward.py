@@ -47,4 +47,5 @@ class InformationReward:
 
     def update(self, states):
         """Update occupancy density estimate from batch of states."""
-        self.density.learn(states)
+        with torch.no_grade():
+            self.density.learn(states)

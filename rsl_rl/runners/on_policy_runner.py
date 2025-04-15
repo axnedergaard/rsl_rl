@@ -85,8 +85,6 @@ class OnPolicyRunner:
             self.alg_cfg["rnd_cfg"]["num_states"] = num_rnd_state
             # scale down the rnd weight with timestep (similar to how rewards are scaled down in legged_gym envs)
             self.alg_cfg["rnd_cfg"]["weight"] *= env.unwrapped.step_dt
-        elif "info_reward_cfg" in self.alg_cfg and self.alg_cfg["info_reward_cfg"] is not None: 
-            raise NotImplementedError
 
         # if using symmetry then pass the environment config object
         if "symmetry_cfg" in self.alg_cfg and self.alg_cfg["symmetry_cfg"] is not None:

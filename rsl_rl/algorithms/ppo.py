@@ -12,6 +12,7 @@ from itertools import chain
 
 from rsl_rl.modules import ActorCritic
 from rsl_rl.modules.rnd import RandomNetworkDistillation
+from rsl_rl.modules.info_reward import InformationReward
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import string_to_callable
 

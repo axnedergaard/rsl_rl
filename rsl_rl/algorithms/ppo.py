@@ -70,6 +70,7 @@ class PPO:
             raise NotImplementedError
         else:
             self.rnd = None
+            self.info_reward = None
             self.rnd_optimizer = None
             # TODO: Information rewards
 

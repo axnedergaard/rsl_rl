@@ -180,13 +180,12 @@ class KMDensityEstimator(Density, Learner):
     def information(self, x: Tensor) -> Tensor:
         """
         Computes the information of a state in the k-means
-        Params: x: (dim,) point at which to compute information
-        Params: diameters: (k,) diameters of each clusters
-        Returns: (1,) lower bound of the information
-        Time-complexity: O(k)
+        Params: x: (batch, dim,) point at which to compute information
+        Returns: (batch, 1) lower bound of the information
+        Time-complexity: O(k * dim)
         """
-        _, closest_idx = self._find_closest_cluster(x.unsqueeze(0))
-        diameter = self.diameters[closest_idx[0]]
+        _, closest_idx = self._find_closest_cluster(x)
+        diameter = self.diameters[closest_idx]
         return self.information_geometry.information_function(diameter)
 
 

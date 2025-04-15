@@ -9,7 +9,7 @@ class EuclideanGeometry(Geometry):
 
     @torch.no_grad()
     def broadcast_distance_function(self, x, y):
-      distances = torch.norm(x - y, dim=1)
+      distances = torch.cdist(x, y)
       if distances.dim() == 1:
         return distances.unsqueeze(0)
       else:

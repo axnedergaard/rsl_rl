@@ -14,6 +14,7 @@ class KNNDensityEstimator(Density):
       geometry: Geometry,
       information_geometry: InformationGeometry,
       rolling_average: bool = True,
+      device: torch.device = torch.device('cpu')
     ):
       Density.__init__(self, dim, information_geometry)
       self.k = k
@@ -24,6 +25,7 @@ class KNNDensityEstimator(Density):
       self.rolling_average = rolling_average 
       self.geometry = geometry
       self.ready = False
+      self.device = device # TODO. Properly integrate in code.
 
     @torch.no_grad()
     def learn(self, states: Tensor) -> None:
@@ -71,9 +73,9 @@ class KNNDensityEstimator(Density):
     @torch.no_grad()
     def compute_average_distances_from_point(self, x: Tensor) -> Tensor:
       distances = self.compute_distances(
-        x.unsqueeze(0), 
-        self.buffer[:self.buffer_size]
-      ).view(-1) # shape: (buffer_size,)
+        x, 
+        self.buffer
+      ) # shape: (buffer_size, k)
       return self.compute_average_distances(distances)
 
     @torch.no_grad()
@@ -120,6 +122,7 @@ class KNNDensityEstimator(Density):
     
     @torch.no_grad()
     def compute_distances(self, states: Tensor, buffer: Tensor) -> Tensor:
-      distances = self.geometry.broadcast_distance_function(states, buffer)
+      distances = self.geometry.broadcast_distance_function(states.unsqueeze(1), buffer.unsqueeze(0))
+      distances = distances.squeeze(1)
       k_nearest_distances = torch.topk(distances, self.k, dim=1, largest=False).values
       return k_nearest_distances # shape: (states.size(0), k)

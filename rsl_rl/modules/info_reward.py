@@ -1,5 +1,5 @@
 import torch
-from rsl_rl.modules import information_reward
+import rum
 
 class InformationReward:
     def __init__(
@@ -19,7 +19,7 @@ class InformationReward:
         # Initialize information geometry.
         info_geom_cls_name = info_geom_cfg.pop('cls_name')
         info_geom_cls = getattr(
-            information_reward, 
+            rum.information_geometry, 
             info_geom_cls_name
         )
         info_geom = info_geom_cls(**info_geom_cfg)
@@ -27,14 +27,14 @@ class InformationReward:
         # Initialize occupancy estimator.
         density_cls_name = density_cfg.pop('cls_name')
         density_cls = getattr(
-            information_reward, 
+            rum.density, 
             density_cls_name,
         )
         self.density = density_cls(
             **density_cfg,
             dim = num_states, 
             information_geometry = info_geom,
-            geometry = information_reward.EuclideanGeometry(num_states),
+            geometry = rum.geometry.EuclideanGeometry(num_states),
             device = device,
         )
 

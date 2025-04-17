@@ -401,9 +401,6 @@ class PPO:
             if self.rnd_optimizer:
                 self.rnd_optimizer.step()
 
-            if self.info_reward:
-                self.info_reward.update(rnd_state_batch)
-
             # Store the losses
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
@@ -414,6 +411,12 @@ class PPO:
             # -- Symmetry loss
             if mean_symmetry_loss is not None:
                 mean_symmetry_loss += symmetry_loss.item()
+
+        if self.info_reward:
+            info_reward_states = self.storage.rnd_state.reshape(
+                (-1, self.info_reward.num_states)
+            )
+            self.info_reward.update(info_reward_states)
 
         # -- For PPO
         num_updates = self.num_learning_epochs * self.num_mini_batches

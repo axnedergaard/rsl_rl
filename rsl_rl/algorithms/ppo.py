@@ -61,22 +61,20 @@ class PPO:
             self.gpu_world_size = 1
 
         # RND components
+        self.rnd = None
+        self.info_reward = None
+        self.rnd_optimizer = None
         if rnd_cfg is not None:
             # Create RND module
             self.rnd = RandomNetworkDistillation(device=self.device, **rnd_cfg)
             # Create RND optimizer
-            params = self.rnd.predictor.parameters()
-            self.rnd_optimizer = optim.Adam(params, lr=rnd_cfg.get("learning_rate", 1e-3))
-            self.info_reward = None
-        elif info_reward_cfg is not None:
-            # Create information reward module.
+            if info_reward_cfg is None: 
+                # Only need optimizer if not using info rewards.
+                params = self.rnd.predictor.parameters()
+                self.rnd_optimizer = optim.Adam(params, lr=rnd_cfg.get("learning_rate", 1e-3))
+        if info_reward_cfg is not None:
+            # Create info reward module.
             self.info_reward = InformationReward(device=self.device, **info_reward_cfg)
-            self.rnd = None
-            self.rnd_optimizer = None
-        else:
-            self.rnd = None
-            self.info_reward = None
-            self.rnd_optimizer = None
 
         # Symmetry components
         if symmetry_cfg is not None:
@@ -129,6 +127,8 @@ class PPO:
         # create memory for RND as well :)
         if self.rnd:
             rnd_state_shape = [self.rnd.num_states]
+            if self.info_reward:
+                self.info_reward.num_states = self.rnd.num_states
         elif self.info_reward:
             rnd_state_shape = [self.info_reward.num_states]
         else:
@@ -201,7 +201,7 @@ class PPO:
         mean_surrogate_loss = 0
         mean_entropy = 0
         # -- RND loss
-        if self.rnd:
+        if self.rnd_optimizer:
             mean_rnd_loss = 0
         else:
             mean_rnd_loss = None
@@ -372,7 +372,7 @@ class PPO:
                     symmetry_loss = symmetry_loss.detach()
 
             # Random Network Distillation loss
-            if self.rnd:
+            if self.rnd_optimizer:
                 # predict the embedding and the target
                 predicted_embedding = self.rnd.predictor(rnd_state_batch)
                 target_embedding = self.rnd.target(rnd_state_batch).detach()
@@ -385,7 +385,7 @@ class PPO:
             self.optimizer.zero_grad()
             loss.backward()
             # -- For RND
-            if self.rnd:
+            if self.rnd_optimizer:
                 self.rnd_optimizer.zero_grad()  # type: ignore
                 rnd_loss.backward()
 
@@ -413,7 +413,10 @@ class PPO:
                 mean_symmetry_loss += symmetry_loss.item()
 
         if self.info_reward:
-            info_reward_states = self.storage.rnd_state.reshape(
+            info_reward_states = self.storage.rnd_state
+            if self.rnd: # Use RND embedding.
+                info_reward_states = self.rnd.target(info_reward_states).detach()
+            info_reward_states = info_reward_states.reshape(
                 (-1, self.info_reward.num_states)
             )
             self.info_reward.update(info_reward_states)
@@ -438,7 +441,7 @@ class PPO:
             "surrogate": mean_surrogate_loss,
             "entropy": mean_entropy,
         }
-        if self.rnd:
+        if self.rnd_optimizer:
             loss_dict["rnd"] = mean_rnd_loss
         if self.symmetry:
             loss_dict["symmetry"] = mean_symmetry_loss
@@ -453,13 +456,13 @@ class PPO:
         """Broadcast model parameters to all GPUs."""
         # obtain the model parameters on current GPU
         model_params = [self.policy.state_dict()]
-        if self.rnd:
+        if self.rnd_optimizer:
             model_params.append(self.rnd.predictor.state_dict())
         # broadcast the model parameters
         torch.distributed.broadcast_object_list(model_params, src=0)
         # load the model parameters on all GPUs from source GPU
         self.policy.load_state_dict(model_params[0])
-        if self.rnd:
+        if self.rnd_optimizer:
             self.rnd.predictor.load_state_dict(model_params[1])
 
     def reduce_parameters(self):
@@ -469,7 +472,7 @@ class PPO:
         """
         # Create a tensor to store the gradients
         grads = [param.grad.view(-1) for param in self.policy.parameters() if param.grad is not None]
-        if self.rnd:
+        if self.rnd_optimizer:
             grads += [param.grad.view(-1) for param in self.rnd.parameters() if param.grad is not None]
         all_grads = torch.cat(grads)
 
@@ -479,7 +482,7 @@ class PPO:
 
         # Get all parameters
         all_params = self.policy.parameters()
-        if self.rnd:
+        if self.rnd_optimizer:
             all_params = chain(all_params, self.rnd.parameters())
 
         # Update the gradients for all parameters with the reduced gradients

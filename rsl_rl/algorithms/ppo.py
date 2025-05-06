@@ -10,11 +10,15 @@ import torch.nn as nn
 import torch.optim as optim
 from itertools import chain
 
+import rum
+
 from rsl_rl.modules import ActorCritic
 from rsl_rl.modules.rnd import RandomNetworkDistillation
 from rsl_rl.modules.info_reward import InformationReward
+from rsl_rl.modules.goal_reward import GoalReward
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import string_to_callable
+
 
 
 class PPO:
@@ -43,7 +47,7 @@ class PPO:
         # RND parameters
         rnd_cfg: dict | None = None,
         # Information reward parameters
-        info_reward_cfg: dict | None = None,
+        rewarder_cfg: dict | None = None,
         # Symmetry parameters
         symmetry_cfg: dict | None = None,
         # Distributed training parameters
@@ -63,18 +67,43 @@ class PPO:
         # RND components
         self.rnd = None
         self.info_reward = None
+        self.goal_reward = None
         self.rnd_optimizer = None
         if rnd_cfg is not None:
             # Create RND module
             self.rnd = RandomNetworkDistillation(device=self.device, **rnd_cfg)
             # Create RND optimizer
-            if info_reward_cfg is None: 
+            if rewarder_cfg is None: 
+                assert rewarder_cfg['cls_name'] != 'GoalRewarder'
                 # Only need optimizer if not using info rewards.
                 params = self.rnd.predictor.parameters()
                 self.rnd_optimizer = optim.Adam(params, lr=rnd_cfg.get("learning_rate", 1e-3))
-        if info_reward_cfg is not None:
-            # Create info reward module.
-            self.info_reward = InformationReward(device=self.device, **info_reward_cfg)
+        if rewarder_cfg is not None:
+            # Below is pretty horrible but necessary to have rum vs rsl_rl compability without refactoring.
+            # The problem is that 
+            # 1) rum creates objects separately based on config dicts and passes them into each other, while in rsl_rl, objects are created within other objects based on config dicts passed into them.
+            # 2) The rum rewarders need custom wrapping to correctly and efficiently compute intrinsic rewards and updates within rsl_rl.
+
+            # Create geometry model.
+            if rewarder_cfg['geometry'] is not None:
+                geom_cfg = rewarder_cfg.pop('geometry')
+                geom_cls_name = geom_cfg.pop('cls_name')
+                geom_cls = getattr(
+                    rum.geometry,
+                    geom_cls_name
+                )
+                self.geom = geom_cls(**geom_cfg, num_states=rewarder_cfg['num_states'])
+            else:
+                self.geom = None
+
+            # Create info or goal reward.
+            rewarder_cls_name = rewarder_cfg.pop('cls_name'): 
+            if rewarder_cls_name == 'DensityRewarder':
+                self.info_reward = InformationReward(device=self.device, **rewarder_cfg)
+            elif rewarder_cls_name == 'GoalRewarder':
+                self.goal_reward = GoalReward(geom=self.geom, device=self.device, **rewarder_cfg)
+            else:
+                raise ValueError(rewarder_cls_name)
 
         # Symmetry components
         if symmetry_cfg is not None:
@@ -131,6 +160,8 @@ class PPO:
                 self.info_reward.num_states = self.rnd.num_states
         elif self.info_reward:
             rnd_state_shape = [self.info_reward.num_states]
+        elif self.goal_reward:
+            rnd_state_shape = [self.goal_reward.num_states]
         else:
             rnd_state_shape = None
         # create rollout storage
@@ -160,19 +191,26 @@ class PPO:
         return self.transition.actions
 
     def process_env_step(self, rewards, dones, infos):
+        using_intrinsic_reward = self.alg.rnd or self.alg.info_reward or self.alg.goal_reward
         # Record the rewards and dones
         # Note: we clone here because later on we bootstrap the rewards based on timeouts
         self.transition.rewards = rewards.clone()
         self.transition.dones = dones
 
         # Compute the intrinsic rewards and add to extrinsic rewards
-        if self.rnd or self.info_reward:
-            reward_module = self.rnd if self.rnd else self.info_reward
+        #if self.rnd or self.info_reward:
+        if using_intrinsic_reward:
+            if self.info_reward:
+                rewarder = self.info_reward
+            elif self.goal_reward:
+                rewarder = self.goal_reward
+            else:
+                rewarder = self.rnd
             # Obtain curiosity gates / observations from infos
             rnd_state = infos["observations"]["rnd_state"]
             # Compute the intrinsic rewards
             # note: rnd_state is the gated_state after normalization if normalization is used
-            self.intrinsic_rewards, rnd_state = reward_module.get_intrinsic_reward(rnd_state)
+            self.intrinsic_rewards, rnd_state = rewarder.get_intrinsic_reward(rnd_state)
             # Add intrinsic rewards to extrinsic rewards
             self.transition.rewards += self.intrinsic_rewards
             # Record the curiosity gates
@@ -412,6 +450,10 @@ class PPO:
             if mean_symmetry_loss is not None:
                 mean_symmetry_loss += symmetry_loss.item()
 
+        # Update geometry model.
+        if self.geom:
+            self.geom_learn(self.storage.rnd_state)
+        # Update occupancy estimate.
         if self.info_reward:
             info_reward_states = self.storage.rnd_state
             if self.rnd: # Use RND embedding.
@@ -420,6 +462,10 @@ class PPO:
                 (-1, self.info_reward.num_states)
             )
             self.info_reward.update(info_reward_states)
+        # Change goal.
+        if self.goal_reward:
+            self.goal_reward.update_goal(self.storage.rnd_state[0,0,:])
+
 
         # -- For PPO
         num_updates = self.num_learning_epochs * self.num_mini_batches

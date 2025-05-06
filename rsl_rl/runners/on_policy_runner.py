@@ -85,12 +85,12 @@ class OnPolicyRunner:
             self.alg_cfg["rnd_cfg"]["num_states"] = num_rnd_state
             # scale down the rnd weight with timestep (similar to how rewards are scaled down in legged_gym envs)
             self.alg_cfg["rnd_cfg"]["weight"] *= env.unwrapped.step_dt
-            if "info_reward_cfg" in self.alg_cfg and self.alg_cfg["info_reward_cfg"] is not None:
-                self.alg_cfg["info_reward_cfg"]["num_states"] = num_rnd_state
-        elif "info_reward_cfg" in self.alg_cfg and self.alg_cfg["info_reward_cfg"] is not None:
+            if "rewarder_cfg" in self.alg_cfg and self.alg_cfg["rewarder_cfg"] is not None:
+                self.alg_cfg["rewarder_cfg"]["num_states"] = num_rnd_state
+        elif "rewarder_cfg" in self.alg_cfg and self.alg_cfg["rewarder_cfg"] is not None:
             rnd_state = extras["observations"].get("rnd_state")
             num_rnd_state = rnd_state.shape[1]
-            self.alg_cfg["info_reward_cfg"]["num_states"] = num_rnd_state
+            self.alg_cfg["rewarder_cfg"]["num_states"] = num_rnd_state
 
         # if using symmetry then pass the environment config object
         if "symmetry_cfg" in self.alg_cfg and self.alg_cfg["symmetry_cfg"] is not None:
@@ -136,6 +136,7 @@ class OnPolicyRunner:
         self.git_status_repos = [rsl_rl.__file__]
 
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):  # noqa: C901
+        using_intrinsic_reward = self.alg.rnd or self.alg.info_reward or self.alg.goal_reward
         # initialize writer
         if self.log_dir is not None and self.writer is None and not self.disable_logs:
             # Launch either Tensorboard or Neptune & Tensorboard summary writer(s), default: Tensorboard.
@@ -185,7 +186,7 @@ class OnPolicyRunner:
         # create buffers for logging extrinsic and intrinsic rewards
         erewbuffer = deque(maxlen=100)
         cur_ereward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
-        if self.alg.rnd or self.alg.info_reward:
+        if self.alg.rnd or self.alg.info_reward or self.alg.goal_reward:
             irewbuffer = deque(maxlen=100)
             cur_ireward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
@@ -223,7 +224,7 @@ class OnPolicyRunner:
                     self.alg.process_env_step(rewards, dones, infos)
 
                     # Extract intrinsic rewards (only for logging)
-                    intrinsic_rewards = self.alg.intrinsic_rewards if self.alg.rnd or self.alg.info_reward else None
+                    intrinsic_rewards = self.alg.intrinsic_rewards if using_intrinsic_reward else None
 
                     # book keeping
                     if self.log_dir is not None:
@@ -233,7 +234,8 @@ class OnPolicyRunner:
                             ep_infos.append(infos["log"])
                         # Update rewards
                         cur_ereward_sum += rewards
-                        if self.alg.rnd or self.alg.info_reward:
+                        #if self.alg.rnd or self.alg.info_reward:
+                        if using_intrinsic_reward:
                             cur_ireward_sum += intrinsic_rewards  # type: ignore
                             cur_reward_sum += rewards + intrinsic_rewards
                         else:
@@ -250,7 +252,8 @@ class OnPolicyRunner:
                         # -- intrinsic and extrinsic rewards
                         erewbuffer.extend(cur_ereward_sum[new_ids][:, 0].cpu().numpy().tolist())
                         cur_ereward_sum[new_ids] = 0
-                        if self.alg.rnd or self.alg.info_reward:
+                        #if self.alg.rnd or self.alg.info_reward:
+                        if using_intrinsic_reward:
                             irewbuffer.extend(cur_ireward_sum[new_ids][:, 0].cpu().numpy().tolist())
                             cur_ireward_sum[new_ids] = 0
 
@@ -276,6 +279,13 @@ class OnPolicyRunner:
                 if it % self.save_interval == 0:
                     self.save(os.path.join(self.log_dir, f"model_{it}.pt"))
 
+            #if if hasattr(self, 'logger') and hasattr(self.logger, 'run_scripts'):
+            #  self.logger.run_scripts({
+            #    'states': states, # TODO
+            #    'extrinsic_rewards': erewbuffer,
+            #    'intrinsic_rewards': irewbuffer,
+            #  })
+
             # Clear episode infos
             ep_infos.clear()
             # Save code state
@@ -292,6 +302,7 @@ class OnPolicyRunner:
             self.save(os.path.join(self.log_dir, f"model_{self.current_learning_iteration}.pt"))
 
     def log(self, locs: dict, width: int = 80, pad: int = 35):
+        using_intrinsic_reward = self.alg.rnd or self.alg.info_reward or self.alg.goal_reward
         # Compute the collection size
         collection_size = self.num_steps_per_env * self.env.num_envs * self.gpu_world_size
         # Update total time-steps and time
@@ -342,7 +353,8 @@ class OnPolicyRunner:
         if len(locs["rewbuffer"]) > 0:
             # separate logging for intrinsic and extrinsic rewards
             self.writer.add_scalar("mean_extrinsic_reward", statistics.mean(locs["erewbuffer"]), locs["it"])
-            if self.alg.rnd or self.alg.info_reward:
+            #if self.alg.rnd or self.alg.info_reward:
+            if using_intrinsic_reward:
                 self.writer.add_scalar("mean_intrinsic_reward", statistics.mean(locs["irewbuffer"]), locs["it"])
             elif self.alg.rnd_optimizer:
                 self.writer.add_scalar("Rnd/weight", self.alg.rnd.weight, locs["it"])
@@ -369,7 +381,8 @@ class OnPolicyRunner:
             for key, value in locs["loss_dict"].items():
                 log_string += f"""{f'Mean {key} loss:':>{pad}} {value:.4f}\n"""
             # -- Rewards
-            if self.alg.rnd or self.alg.info_reward:
+            #if self.alg.rnd or self.alg.info_reward:
+            if using_intrinsic_reward:
                 log_string += (
                     f"""{'Mean extrinsic reward:':>{pad}} {statistics.mean(locs['erewbuffer']):.2f}\n"""
                     f"""{'Mean intrinsic reward:':>{pad}} {statistics.mean(locs['irewbuffer']):.2f}\n"""

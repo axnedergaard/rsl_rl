@@ -7,30 +7,30 @@ class InformationReward:
         num_states: int,
         density_cfg: dict,
         info_geom_cfg: dict,
-        weight: float = 1.0,
+        scaling: float = 1.0,
         device: str = "cpu",
-        # TODO: state_normalization, reward_normalization, weight_schedule
+        # TODO: state_normalization, reward_normalization, scaling_schedule
     ):
         """Initialize the information reward module."""
 
         self.num_states = num_states
-        self.weight = weight
+        self.scaling = scaling
 
         # Initialize information geometry.
-        info_geom_cls_name = info_geom_cfg.pop('cls_name')
-        info_geom_cls = getattr(
+        info_geom_class_name = info_geom_cfg.pop('name')
+        info_geom_class = getattr(
             rum.information_geometry, 
-            info_geom_cls_name
+            info_geom_class_name
         )
-        info_geom = info_geom_cls(**info_geom_cfg)
+        info_geom = info_geom_class(**info_geom_cfg)
 
         # Initialize occupancy estimator.
-        density_cls_name = density_cfg.pop('cls_name')
-        density_cls = getattr(
+        density_class_name = density_cfg.pop('name')
+        density_class = getattr(
             rum.density, 
-            density_cls_name,
+            density_class_name,
         )
-        self.density = density_cls(
+        self.density = density_class(
             **density_cfg,
             dim = num_states, 
             information_geometry = info_geom,
@@ -42,7 +42,7 @@ class InformationReward:
         """Compute intrinsic reward for batch of states."""
         with torch.no_grad():
             intrinsic_rewards = self.density.information(states)
-        intrinsic_rewards *= self.weight
+        intrinsic_rewards *= self.scaling
         return intrinsic_rewards, states
 
     def update(self, states):

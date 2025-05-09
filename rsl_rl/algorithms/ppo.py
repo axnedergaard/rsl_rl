@@ -74,10 +74,11 @@ class PPO:
             self.rnd = RandomNetworkDistillation(device=self.device, **rnd_cfg)
             # Create RND optimizer
             if rewarder_cfg is None: 
-                assert rewarder_cfg['cls_name'] != 'GoalRewarder'
-                # Only need optimizer if not using info rewards.
+                # Only need optimizer if not using info or goal rewards.
                 params = self.rnd.predictor.parameters()
                 self.rnd_optimizer = optim.Adam(params, lr=rnd_cfg.get("learning_rate", 1e-3))
+
+        self.geom = None
         if rewarder_cfg is not None:
             # Below is pretty horrible but necessary to have rum vs rsl_rl compability without refactoring.
             # The problem is that 
@@ -85,22 +86,33 @@ class PPO:
             # 2) The rum rewarders need custom wrapping to correctly and efficiently compute intrinsic rewards and updates within rsl_rl.
 
             # Create geometry model.
-            if rewarder_cfg['geometry'] is not None:
-                geom_cfg = rewarder_cfg.pop('geometry')
-                geom_cls_name = geom_cfg.pop('cls_name')
-                geom_cls = getattr(
-                    rum.geometry,
-                    geom_cls_name
-                )
-                self.geom = geom_cls(**geom_cfg, num_states=rewarder_cfg['num_states'])
-            else:
-                self.geom = None
+            if 'geometry_cfg' in rewarder_cfg:
+                geom_cfg = rewarder_cfg.pop('geometry_cfg')
+                geom_cls_name = geom_cfg.pop('name')
+                if geom_cls_name == 'EmbeddingGeometry':
+                  geom_cfg['device'] = self.device
+                  # Create graph for embedding geometry.
+                  assert 'graph_cfg' in rewarder_cfg
+                  graph_cfg = rewarder_cfg.pop('graph_cfg')
+                  graph_cls_name = graph_cfg.pop('name')
+                  graph_cls = getattr(rum.graph, graph_cls_name)
+                  graph_geometry = rum.geometry.EuclideanGeometry(dim=rewarder_cfg['num_states']) # Circularity issue right here if bootstrapping geometry.
+                  graph = graph_cls(**graph_cfg, geometry=graph_geometry)
+                  geom_cfg['graph'] = graph
+                geom_cls = getattr(rum.geometry, geom_cls_name)
+                self.geom = geom_cls(**geom_cfg, dim=rewarder_cfg['num_states'])
 
             # Create info or goal reward.
-            rewarder_cls_name = rewarder_cfg.pop('cls_name'): 
+            self.info_reward = None
+            self.goal_reward = None
+            rewarder_cls_name = rewarder_cfg.pop('name')
             if rewarder_cls_name == 'DensityRewarder':
+                assert 'info_geom_cfg' in rewarder_cfg
+                assert 'density_cfg' in rewarder_cfg
                 self.info_reward = InformationReward(device=self.device, **rewarder_cfg)
             elif rewarder_cls_name == 'GoalRewarder':
+                assert self.geom is not None and geom_cls_name == 'EmbeddingGeometry'
+                del rewarder_cfg['num_states'] # Not used by GoalReward as it is inferred from geom.
                 self.goal_reward = GoalReward(geom=self.geom, device=self.device, **rewarder_cfg)
             else:
                 raise ValueError(rewarder_cls_name)
@@ -191,7 +203,7 @@ class PPO:
         return self.transition.actions
 
     def process_env_step(self, rewards, dones, infos):
-        using_intrinsic_reward = self.alg.rnd or self.alg.info_reward or self.alg.goal_reward
+        using_intrinsic_reward = self.rnd or self.info_reward or self.goal_reward
         # Record the rewards and dones
         # Note: we clone here because later on we bootstrap the rewards based on timeouts
         self.transition.rewards = rewards.clone()
@@ -452,7 +464,7 @@ class PPO:
 
         # Update geometry model.
         if self.geom:
-            self.geom_learn(self.storage.rnd_state)
+            self.geom.learn(self.storage.rnd_state)
         # Update occupancy estimate.
         if self.info_reward:
             info_reward_states = self.storage.rnd_state

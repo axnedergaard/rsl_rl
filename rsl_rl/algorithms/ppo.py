@@ -79,6 +79,7 @@ class PPO:
                 self.rnd_optimizer = optim.Adam(params, lr=rnd_cfg.get("learning_rate", 1e-3))
 
         self.geom = None
+        self.density = None
         if rewarder_cfg is not None:
             # Below is pretty horrible but necessary to have rum vs rsl_rl compability without refactoring.
             # The problem is that 
@@ -96,20 +97,50 @@ class PPO:
                   graph_cfg = rewarder_cfg.pop('graph_cfg')
                   graph_cls_name = graph_cfg.pop('name')
                   graph_cls = getattr(rum.graph, graph_cls_name)
-                  graph_geometry = rum.geometry.EuclideanGeometry(dim=rewarder_cfg['num_states']) # Circularity issue right here if bootstrapping geometry.
-                  graph = graph_cls(**graph_cfg, geometry=graph_geometry)
+                  graph_geometry = rum.geometry.EuclideanGeometry(dim=rewarder_cfg['num_states']) 
+                  graph = graph_cls(**graph_cfg, geometry=graph_geometry, device=self.device)
                   geom_cfg['graph'] = graph
                 geom_cls = getattr(rum.geometry, geom_cls_name)
                 self.geom = geom_cls(**geom_cfg, dim=rewarder_cfg['num_states'])
+
+            # Create information geometry.
+            info_geom = None
+            if 'info_geom_cfg' in rewarder_cfg:
+                info_geom_cfg = rewarder_cfg.pop('info_geom_cfg')
+                info_geom_class_name = info_geom_cfg.pop('name')
+                info_geom_class = getattr(
+                    rum.information_geometry, 
+                    info_geom_class_name
+                )
+                info_geom = info_geom_class(**info_geom_cfg)
+
+            # Create density / occupancy estimator.
+            if 'density_cfg' in rewarder_cfg:
+                density_cfg = rewarder_cfg.pop('density_cfg')
+                density_class_name = density_cfg.pop('name')
+                density_class = getattr(
+                    rum.density, 
+                    density_class_name,
+                )
+                self.density = density_class(
+                    **density_cfg,
+                    dim = rewarder_cfg['num_states'],
+                    information_geometry = info_geom,
+                    geometry = rum.geometry.EuclideanGeometry(rewarder_cfg['num_states']),
+                    device = device,
+                )
+                if self.geom is not None and geom_cls_name == 'EmbeddingGeometry': # Hacky due to circularity issue when bootstrapping geometry.
+                    self.geom.graph.hack(self.geom, self.density)
+
 
             # Create info or goal reward.
             self.info_reward = None
             self.goal_reward = None
             rewarder_cls_name = rewarder_cfg.pop('name')
             if rewarder_cls_name == 'DensityRewarder':
-                assert 'info_geom_cfg' in rewarder_cfg
-                assert 'density_cfg' in rewarder_cfg
-                self.info_reward = InformationReward(device=self.device, **rewarder_cfg)
+                assert info_geom is not None
+                assert self.density is not None
+                self.info_reward = InformationReward(device=self.device, density=self.density, **rewarder_cfg)
             elif rewarder_cls_name == 'GoalRewarder':
                 assert self.geom is not None and geom_cls_name == 'EmbeddingGeometry'
                 del rewarder_cfg['num_states'] # Not used by GoalReward as it is inferred from geom.
@@ -462,18 +493,23 @@ class PPO:
             if mean_symmetry_loss is not None:
                 mean_symmetry_loss += symmetry_loss.item()
 
+        # Update density.
+        if self.density:
+            with torch.no_grad(): # TODO. Detaches unnecessary?
+                density_states = self.storage.rnd_state
+                if self.rnd: # Use RND embedding.
+                    density_states = self.rnd.target(density_states).detach()
+                if self.geom: # Use embedding geometry.
+                    # TODO. Make sure isinstance(self.geom, EmbeddingGeometry)
+                    density_states = self.geom.network(density_states).detach()
+                density_states = density_states.reshape(
+                    (-1, self.density.dim)
+                )
+                update_distances = (self.info_reward is not None)
+                self.density.learn(density_states, update_distances = update_distances)
         # Update geometry model.
         if self.geom:
             self.geom.learn(self.storage.rnd_state)
-        # Update occupancy estimate.
-        if self.info_reward:
-            info_reward_states = self.storage.rnd_state
-            if self.rnd: # Use RND embedding.
-                info_reward_states = self.rnd.target(info_reward_states).detach()
-            info_reward_states = info_reward_states.reshape(
-                (-1, self.info_reward.num_states)
-            )
-            self.info_reward.update(info_reward_states)
         # Change goal.
         if self.goal_reward:
             self.goal_reward.update_goal(self.storage.rnd_state[0,0,:])

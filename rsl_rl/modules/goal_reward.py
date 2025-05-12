@@ -21,7 +21,6 @@ class GoalReward:
         self.scaling = scaling
         self.rewarder = GoalRewarder(geom, goal_threshold, goal_update_freq, device=device)
         
-
     def get_intrinsic_reward(self, states) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute intrinsic reward for batch of states."""
         with torch.no_grad():
@@ -31,4 +30,3 @@ class GoalReward:
 
     def update_goal(self, state):
         self.rewarder.update_goal(state)
-        

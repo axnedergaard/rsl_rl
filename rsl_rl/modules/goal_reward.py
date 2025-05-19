@@ -20,11 +20,12 @@ class GoalReward:
         self.num_states = geom.dim
         self.scaling = scaling
         self.rewarder = GoalRewarder(geom, goal_threshold, goal_update_freq, device=device)
-        
+        self.new_trajectory = 1.0  # Horrible: This should have shape (num_envs, num_states) but we don't have access to num_envs here..        
     def get_intrinsic_reward(self, states) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute intrinsic reward for batch of states."""
         with torch.no_grad():
             intrinsic_rewards = self.rewarder.reward_function(states)
+        intrinsic_rewards *= (1.0 - self.new_trajectory)
         intrinsic_rewards *= self.scaling
         return intrinsic_rewards, states
 

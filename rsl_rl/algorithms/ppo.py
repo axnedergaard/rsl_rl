@@ -253,11 +253,16 @@ class PPO:
             rnd_state = infos["observations"]["rnd_state"]
             # Compute the intrinsic rewards
             # note: rnd_state is the gated_state after normalization if normalization is used
+            # TODO. Need to handle info reward with embedding geometry.
             self.intrinsic_rewards, rnd_state = rewarder.get_intrinsic_reward(rnd_state)
             # Add intrinsic rewards to extrinsic rewards
             self.transition.rewards += self.intrinsic_rewards
             # Record the curiosity gates
             self.transition.rnd_state = rnd_state.clone()
+
+        # Hack to correctly compute goal rewards.
+        if self.goal_reward:
+            self.goal_reward.new_trajectory = dones
 
         # Bootstrapping on time outs
         if "time_outs" in infos:
@@ -499,8 +504,7 @@ class PPO:
                 density_states = self.storage.rnd_state
                 if self.rnd: # Use RND embedding.
                     density_states = self.rnd.target(density_states).detach()
-                if self.geom: # Use embedding geometry.
-                    # TODO. Make sure isinstance(self.geom, EmbeddingGeometry)
+                if self.geom and isinstance(self.geom, rum.geometry.EmbeddingGeometry): # Use embedding geometry.
                     density_states = self.geom.network(density_states).detach()
                 density_states = density_states.reshape(
                     (-1, self.density.dim)

@@ -22,17 +22,19 @@ from rsl_rl.modules import (
     StudentTeacherRecurrent,
 )
 from rsl_rl.utils import store_code_state
+from rsl_rl.utils.rum.logger import Logger
 
 
 class OnPolicyRunner:
     """On-policy runner for training and evaluation."""
 
-    def __init__(self, env: VecEnv, train_cfg: dict, log_dir: str | None = None, device="cpu"):
+    def __init__(self, env: VecEnv, train_cfg: dict, log_dir: str | None = None, device="cpu", rum_cfg = {}): 
         self.cfg = train_cfg
         self.alg_cfg = train_cfg["algorithm"]
         self.policy_cfg = train_cfg["policy"]
         self.device = device
         self.env = env
+        self.rum_cfg = rum_cfg
 
         # check if multi-gpu is enabled
         self._configure_multi_gpu()
@@ -100,6 +102,21 @@ class OnPolicyRunner:
         # initialize algorithm
         alg_class = eval(self.alg_cfg.pop("class_name"))
         self.alg: PPO | Distillation = alg_class(policy, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
+
+        # Initialize rum script runner.
+        self.rum_logger = None
+        if self.rum_cfg:
+            self.rum_logger = Logger(
+                cfg=self.rum_cfg,
+                manifold=None,
+                geometry=self.alg.geom,
+                density=self.alg.density,
+                rewarder=None,
+                environment=self.env,
+                agent=None,
+                graph=self.alg.geom.graph if self.alg.geom is not None and hasattr(self.alg.geom, 'graph') else None,
+            )
+                                
 
         # store training configuration
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
@@ -279,12 +296,15 @@ class OnPolicyRunner:
                 if it % self.save_interval == 0:
                     self.save(os.path.join(self.log_dir, f"model_{it}.pt"))
 
-            #if if hasattr(self, 'logger') and hasattr(self.logger, 'run_scripts'):
-            #  self.logger.run_scripts({
-            #    'states': states, # TODO
-            #    'extrinsic_rewards': erewbuffer,
-            #    'intrinsic_rewards': irewbuffer,
-            #  })
+
+            # Run rum scripts.
+            if self.rum_logger is not None:
+                self.rum_logger.run_scripts({
+                  'states': self.alg.storage.observations,
+                  'extrinsic_rewards': torch.tensor(list(erewbuffer)),
+                  'intrinsic_rewards': torch.tensor(list(irewbuffer)) if using_intrinsic_reward else None, 
+                })
+
 
             # Clear episode infos
             ep_infos.clear()

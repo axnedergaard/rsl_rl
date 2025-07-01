@@ -293,8 +293,8 @@ class OnPolicyRunner:
                 # Log information
                 self.log(locals())
                 # Save model
-                if it % self.save_interval == 0:
-                    self.save(os.path.join(self.log_dir, f"model_{it}.pt"))
+                #if it % self.save_interval == 0:
+                #    self.save(os.path.join(self.log_dir, f"model_{it}.pt"))
 
 
             # Run rum scripts.
@@ -318,8 +318,8 @@ class OnPolicyRunner:
                         self.writer.save_file(path)
 
         # Save the final model after training
-        if self.log_dir is not None and not self.disable_logs:
-            self.save(os.path.join(self.log_dir, f"model_{self.current_learning_iteration}.pt"))
+        #if self.log_dir is not None and not self.disable_logs:
+        #    self.save(os.path.join(self.log_dir, f"model_{self.current_learning_iteration}.pt"))
 
     def log(self, locs: dict, width: int = 80, pad: int = 35):
         using_intrinsic_reward = self.alg.rnd or self.alg.info_reward or self.alg.goal_reward

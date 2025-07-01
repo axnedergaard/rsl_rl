@@ -87,6 +87,7 @@ class PPO:
             # 2) The rum rewarders need custom wrapping to correctly and efficiently compute intrinsic rewards and updates within rsl_rl.
 
             # Create geometry model.
+            density_num_states = rewarder_cfg['num_states']
             if 'geometry_cfg' in rewarder_cfg:
                 geom_cfg = rewarder_cfg.pop('geometry_cfg')
                 geom_cls_name = geom_cfg.pop('name')
@@ -100,6 +101,7 @@ class PPO:
                   graph_geometry = rum.geometry.EuclideanGeometry(dim=rewarder_cfg['num_states']) 
                   graph = graph_cls(**graph_cfg, geometry=graph_geometry, device=self.device)
                   geom_cfg['graph'] = graph
+                  density_num_states = geom_cfg['embedding_dim']
                 geom_cls = getattr(rum.geometry, geom_cls_name)
                 self.geom = geom_cls(**geom_cfg, dim=rewarder_cfg['num_states'])
 
@@ -124,7 +126,7 @@ class PPO:
                 )
                 self.density = density_class(
                     **density_cfg,
-                    dim = rewarder_cfg['num_states'],
+                    dim = density_num_states, #rewarder_cfg['num_states'],
                     information_geometry = info_geom,
                     geometry = rum.geometry.EuclideanGeometry(rewarder_cfg['num_states']),
                     device = device,
@@ -140,7 +142,7 @@ class PPO:
             if rewarder_cls_name == 'DensityRewarder':
                 assert info_geom is not None
                 assert self.density is not None
-                self.info_reward = InformationReward(device=self.device, density=self.density, **rewarder_cfg)
+                self.info_reward = InformationReward(device=self.device, geom=self.geom, density=self.density, **rewarder_cfg)
             elif rewarder_cls_name == 'GoalRewarder':
                 assert self.geom is not None and geom_cls_name == 'EmbeddingGeometry'
                 del rewarder_cfg['num_states'] # Not used by GoalReward as it is inferred from geom.
@@ -243,22 +245,32 @@ class PPO:
         # Compute the intrinsic rewards and add to extrinsic rewards
         #if self.rnd or self.info_reward:
         if using_intrinsic_reward:
+            # Obtain curiosity gates / observations from infos
+            rnd_state = infos["observations"]["rnd_state"]
+            # Record the curiosity gates
+            self.transition.rnd_state = rnd_state.clone()
+
             if self.info_reward:
                 rewarder = self.info_reward
+                if self.rnd: # Use RND embedding.
+                    rnd_state = self.rnd.target(rnd_state).detach()
+                    rnd_state = rnd_state.reshape(
+                        (-1, self.density.dim)
+                    )               
+                elif self.geom and isinstance(self.geom, rum.geometry.EmbeddingGeometry): # Use embedding geometry.
+                    rnd_state = self.geom.network(rnd_state).detach()
+                    rnd_state = rnd_state.reshape(
+                        (-1, self.geom.embedding_dim) #this should be embedding dim
+                    )
             elif self.goal_reward:
                 rewarder = self.goal_reward
             else:
                 rewarder = self.rnd
-            # Obtain curiosity gates / observations from infos
-            rnd_state = infos["observations"]["rnd_state"]
             # Compute the intrinsic rewards
-            # note: rnd_state is the gated_state after normalization if normalization is used
-            # TODO. Need to handle info reward with embedding geometry.
+            # note: rnd_state is the gated_state after normalization if normalization is used # TODO. Possible this was fucked up by hacks.
             self.intrinsic_rewards, rnd_state = rewarder.get_intrinsic_reward(rnd_state)
             # Add intrinsic rewards to extrinsic rewards
             self.transition.rewards += self.intrinsic_rewards
-            # Record the curiosity gates
-            self.transition.rnd_state = rnd_state.clone()
 
         # Hack to correctly compute goal rewards.
         if self.goal_reward:
@@ -504,20 +516,26 @@ class PPO:
                 density_states = self.storage.rnd_state
                 if self.rnd: # Use RND embedding.
                     density_states = self.rnd.target(density_states).detach()
+                    density_states = density_states.reshape(
+                        (-1, self.density.dim)
+                    )               
                 if self.geom and isinstance(self.geom, rum.geometry.EmbeddingGeometry): # Use embedding geometry.
                     density_states = self.geom.network(density_states).detach()
-                density_states = density_states.reshape(
-                    (-1, self.density.dim)
-                )
+                    density_states = density_states.reshape(
+                        (-1, self.geom.embedding_dim) #this should be embedding dim
+                    )
+                    #density_states = density_states.reshape(
+                    #    (-1, self.density.dim)
+                    #)  
                 update_distances = (self.info_reward is not None)
                 self.density.learn(density_states, update_distances = update_distances)
         # Update geometry model.
         if self.geom:
-            self.geom.learn(self.storage.rnd_state)
+            geom_state = self.storage.rnd_state.reshape((-1, self.storage.rnd_state.shape[-1]))
+            self.geom.learn(geom_state)
         # Change goal.
         if self.goal_reward:
             self.goal_reward.update_goal(self.storage.rnd_state[0,0,:])
-
 
         # -- For PPO
         num_updates = self.num_learning_epochs * self.num_mini_batches

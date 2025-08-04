@@ -93,6 +93,8 @@ class OnPolicyRunner:
             rnd_state = extras["observations"].get("rnd_state")
             num_rnd_state = rnd_state.shape[1]
             self.alg_cfg["rewarder_cfg"]["num_states"] = num_rnd_state
+            if "density_cfg" in self.alg_cfg["rewarder_cfg"] and self.alg_cfg["rewarder_cfg"] is not None:
+                self.alg_cfg["rewarder_cfg"]["density_cfg"]["num_envs"] = self.env.num_envs # Horrible hack because we moving too fast.
 
         # if using symmetry then pass the environment config object
         if "symmetry_cfg" in self.alg_cfg and self.alg_cfg["symmetry_cfg"] is not None:

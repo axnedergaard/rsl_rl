@@ -9,6 +9,8 @@ class InformationReward:
         geom = None,
         scaling: float = 1.0,
         device: str = "cpu",
+        min_reward: float = -100.0,
+        max_reward: float = 100.0,
         # TODO: state_normalization, reward_normalization, scaling_schedule
     ):
         """Initialize the information reward module."""
@@ -17,12 +19,15 @@ class InformationReward:
         self.density = density
         self.scaling = scaling
         self.geom = geom
+        self.min_reward = min_reward
+        self.max_reward = max_reward
 
 
     def get_intrinsic_reward(self, states) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute intrinsic reward for batch of states."""
         with torch.no_grad():
             intrinsic_rewards = self.density.information(states)
+        torch.clamp(intrinsic_rewards, min=self.min_reward, max=self.max_reward)
         intrinsic_rewards *= self.scaling
         return intrinsic_rewards, states
 

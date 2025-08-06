@@ -9,8 +9,11 @@ class GoalReward:
         geom: EmbeddingGeometry,
         goal_threshold: int,
         goal_update_freq: int,
+        optimize_steps: int = 0,
         scaling: float = 1.0,
         device: str = "cpu",
+        min_reward: float = -100.0,
+        max_reward: float = 100.0,
         # TODO: state_normalization, reward_normalization, scaling_schedule
     ):
         """Initialize the information reward module."""
@@ -19,12 +22,15 @@ class GoalReward:
         self.geom = geom
         self.num_states = geom.dim
         self.scaling = scaling
-        self.rewarder = GoalRewarder(geom, goal_threshold, goal_update_freq, device=device)
-        self.new_trajectory = 1.0  # Horrible: This should have shape (num_envs, num_states) but we don't have access to num_envs here..        
+        self.rewarder = GoalRewarder(geom, goal_threshold, goal_update_freq, optimize_steps, device=device)
+        self.min_reward = min_reward
+        self.max_reward = max_reward
+
     def get_intrinsic_reward(self, states) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute intrinsic reward for batch of states."""
         with torch.no_grad():
             intrinsic_rewards = self.rewarder.reward_function(states)
+        torch.clamp(intrinsic_rewards, min=self.min_reward, max=self.max_reward)
         intrinsic_rewards *= (1.0 - self.new_trajectory)
         intrinsic_rewards *= self.scaling
         return intrinsic_rewards, states

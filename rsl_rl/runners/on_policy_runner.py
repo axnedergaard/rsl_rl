@@ -38,7 +38,7 @@ class OnPolicyRunner:
 
         # check if multi-gpu is enabled
         self._configure_multi_gpu()
-
+        # import pdb; pdb.set_trace()
         # resolve training type depending on the algorithm
         if self.alg_cfg["class_name"] == "PPO":
             self.training_type = "rl"

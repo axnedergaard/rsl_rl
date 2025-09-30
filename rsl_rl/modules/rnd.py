@@ -76,7 +76,8 @@ class RandomNetworkDistillation(nn.Module):
 
         # Store parameters
         self.num_states = num_states
-        self.num_outputs = num_outputs
+        self.num_outputs = num_states if num_outputs == -1 else num_outputs
+
         self.initial_weight = weight
         self.device = device
         self.state_normalization = state_normalization
@@ -159,6 +160,8 @@ class RandomNetworkDistillation(nn.Module):
         # resolve hidden dimensions
         # if dims is -1 then we use the number of observations
         hidden_dims = [input_dims if dim == -1 else dim for dim in hidden_dims]
+        output_dims = input_dims if output_dims == -1 else output_dims
+
         # resolve activation function
         activation = resolve_nn_activation(activation_name)
         # first layer

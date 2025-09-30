@@ -257,7 +257,7 @@ class PPO:
                 if self.rnd: # Use RND embedding.
                     rnd_state = self.rnd.target(rnd_state).detach()
                     rnd_state = rnd_state.reshape(
-                        (-1, self.density.dim)
+                        (-1, self.rnd.num_outputs)
                     )               
                 elif self.geom and isinstance(self.geom, rum.geometry.EmbeddingGeometry): # Use embedding geometry.
                     rnd_state = self.geom.network(rnd_state).detach()
@@ -521,7 +521,7 @@ class PPO:
                     density_states = density_states.reshape(
                         (-1, self.density.dim)
                     )               
-                if self.geom and isinstance(self.geom, rum.geometry.EmbeddingGeometry): # Use embedding geometry.
+                elif self.geom and isinstance(self.geom, rum.geometry.EmbeddingGeometry): # Use embedding geometry.
                     density_states = self.geom.network(density_states).detach()
                     density_states = density_states.reshape(
                         (-1, self.geom.embedding_dim) #this should be embedding dim
@@ -529,6 +529,10 @@ class PPO:
                     #density_states = density_states.reshape(
                     #    (-1, self.density.dim)
                     #)  
+                elif self.info_reward: # Use info reward embedding.
+                    density_states = density_states.reshape(
+                        (-1, self.density.dim)
+                    )               
                 update_distances = (self.info_reward is not None)
                 self.density.learn(density_states, update_distances = update_distances)
         # Update geometry model.

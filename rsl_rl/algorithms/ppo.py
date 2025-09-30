@@ -118,6 +118,17 @@ class PPO:
                 )
                 info_geom = info_geom_class(**info_geom_cfg)
 
+            # Create intrinsic reward schedule.
+            schedule = None
+            if 'schedule_cfg' in rewarder_cfg:
+                schedule_cfg = rewarder_cfg.pop('schedule_cfg')
+                schedule_class_name = schedule_cfg.pop('name')
+                schedule_class = getattr(
+                    rum.schedule,
+                    schedule_class_name
+                )
+                schedule = schedule_class(**schedule_cfg)
+
             # Create density / occupancy estimator.
             if 'density_cfg' in rewarder_cfg:
                 density_cfg = rewarder_cfg.pop('density_cfg')
@@ -144,7 +155,7 @@ class PPO:
             if rewarder_cls_name == 'DensityRewarder':
                 assert info_geom is not None
                 assert self.density is not None
-                self.info_reward = InformationReward(device=self.device, geom=self.geom, density=self.density, **rewarder_cfg)
+                self.info_reward = InformationReward(device=self.device, geom=self.geom, density=self.density, schedule=schedule, **rewarder_cfg)
             elif rewarder_cls_name == 'GoalRewarder':
                 assert self.geom is not None and geom_cls_name == 'EmbeddingGeometry'
                 del rewarder_cfg['num_states'] # Not used by GoalReward as it is inferred from geom.

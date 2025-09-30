@@ -244,6 +244,11 @@ class OnPolicyRunner:
                     # process the step
                     self.alg.process_env_step(rewards, dones, infos)
 
+                    # adapt intrinsic reward schedule if needed
+                    if hasattr(self.alg, 'info_reward'):
+                        iter_frac = it / tot_iter
+                        self.alg.info_reward.update_scaling(iter_frac)
+
                     # Extract intrinsic rewards (only for logging)
                     intrinsic_rewards = self.alg.intrinsic_rewards if using_intrinsic_reward else None
 

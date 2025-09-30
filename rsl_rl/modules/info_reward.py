@@ -11,7 +11,8 @@ class InformationReward:
         device: str = "cpu",
         min_reward: float = -100.0,
         max_reward: float = 100.0,
-        # TODO: state_normalization, reward_normalization, scaling_schedule
+        schedule = None,
+        # TODO: state_normalization, reward_normalization
     ):
         """Initialize the information reward module."""
 
@@ -21,7 +22,13 @@ class InformationReward:
         self.geom = geom
         self.min_reward = min_reward
         self.max_reward = max_reward
+        self.schedule = lambda x, y: 0.0
+        self.initial_scaling = scaling
 
+    def update_scaling(self, frac):
+        """Update intrinsic reward scaling according to schedule."""
+        if self.schedule is not None:
+            self.scaling = self.schedule(self.initial_scaling, frac)
 
     def get_intrinsic_reward(self, states) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute intrinsic reward for batch of states."""

@@ -25,6 +25,7 @@ class GoalReward:
         self.rewarder = GoalRewarder(geom, goal_threshold, goal_update_freq, optimize_steps, device=device)
         self.min_reward = min_reward
         self.max_reward = max_reward
+        self.new_trajectory = 1
 
     def get_intrinsic_reward(self, states) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute intrinsic reward for batch of states."""

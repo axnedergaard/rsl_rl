@@ -90,7 +90,9 @@ class PPO:
 
             # Create geometry model.
             density_num_states = rewarder_cfg['num_states']
-            if 'geometry_cfg' in rewarder_cfg:
+            if self.rnd: # Hack, use rnd random network as representation.
+                density_num_states = self.rnd.target[-1].out_features 
+            elif 'geometry_cfg' in rewarder_cfg:
                 geom_cfg = rewarder_cfg.pop('geometry_cfg')
                 geom_cls_name = geom_cfg.pop('name')
                 if geom_cls_name == 'EmbeddingGeometry':

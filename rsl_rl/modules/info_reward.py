@@ -22,7 +22,7 @@ class InformationReward:
         self.geom = geom
         self.min_reward = min_reward
         self.max_reward = max_reward
-        self.schedule = lambda x, y: 0.0
+        self.schedule = schedule
         self.initial_scaling = scaling
 
     def update_scaling(self, frac):

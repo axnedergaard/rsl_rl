@@ -246,8 +246,7 @@ class OnPolicyRunner:
 
                     # adapt intrinsic reward schedule if needed
                     if self.alg.info_reward is not None:
-                        iter_frac = it / tot_iter
-                        self.alg.info_reward.update_scaling(iter_frac)
+                        self.alg.info_reward.update_scaling(it, tot_iter)
 
                     # Extract intrinsic rewards (only for logging)
                     intrinsic_rewards = self.alg.intrinsic_rewards if using_intrinsic_reward else None

@@ -25,10 +25,10 @@ class InformationReward:
         self.schedule = schedule
         self.initial_scaling = scaling
 
-    def update_scaling(self, frac):
+    def update_scaling(self, iteration, max_iteration):
         """Update intrinsic reward scaling according to schedule."""
         if self.schedule is not None:
-            self.scaling = self.schedule(self.initial_scaling, frac)
+            self.scaling = self.schedule(self.initial_scaling, iteration, max_iteration)
 
     def get_intrinsic_reward(self, states) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute intrinsic reward for batch of states."""

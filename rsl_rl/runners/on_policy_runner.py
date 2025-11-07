@@ -11,6 +11,7 @@ import time
 import torch
 import warnings
 from collections import deque
+from tensordict import TensorDict
 
 import rsl_rl
 from rsl_rl.algorithms import PPO
@@ -29,7 +30,7 @@ class OnPolicyRunner:
         self.device = device
         self.env = env
 
-        # check if multi-gpu is enabled
+        # Check if multi-GPU is enabled
         self._configure_multi_gpu()
 
         # store training configuration
@@ -74,7 +75,7 @@ class OnPolicyRunner:
             )
 
         # Decide whether to disable logging
-        # We only log from the process with rank 0 (main process)
+        # Note: We only log from the process with rank 0 (main process)
         self.disable_logs = self.is_distributed and self.gpu_global_rank != 0
 
         # Logging

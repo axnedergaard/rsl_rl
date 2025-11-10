@@ -34,7 +34,7 @@ class GoalReward:
         torch.clamp(intrinsic_rewards, min=self.min_reward, max=self.max_reward)
         intrinsic_rewards *= (1.0 - self.new_trajectory)
         intrinsic_rewards *= self.scaling
-        return intrinsic_rewards, states
+        return intrinsic_rewards
 
     def update_goal(self, state):
         self.rewarder.update_goal(state)

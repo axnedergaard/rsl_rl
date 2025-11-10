@@ -78,8 +78,8 @@ class RandomNetworkDistillation(nn.Module):
 
         # Store parameters
         self.num_states = num_states
-        self.num_outputs = num_states if num_outputs == -1 else num_outputs
-
+        self.obs_groups = obs_groups
+        self.num_outputs = num_outputs
         self.initial_weight = weight
         self.device = device
         self.state_normalization = state_normalization
@@ -162,33 +162,7 @@ class RandomNetworkDistillation(nn.Module):
             rnd_state = self.get_rnd_state(obs)
             self.state_normalizer.update(rnd_state)
 
-        network_layers = []
-        # resolve hidden dimensions
-        # if dims is -1 then we use the number of observations
-        hidden_dims = [input_dims if dim == -1 else dim for dim in hidden_dims]
-        output_dims = input_dims if output_dims == -1 else output_dims
-
-        # resolve activation function
-        activation = resolve_nn_activation(activation_name)
-        # first layer
-        network_layers.append(nn.Linear(input_dims, hidden_dims[0]))
-        network_layers.append(activation)
-        # subsequent layers
-        for layer_index in range(len(hidden_dims)):
-            if layer_index == len(hidden_dims) - 1:
-                # last layer
-                network_layers.append(nn.Linear(hidden_dims[layer_index], output_dims))
-            else:
-                # hidden layers
-                network_layers.append(nn.Linear(hidden_dims[layer_index], hidden_dims[layer_index + 1]))
-                network_layers.append(activation)
-        return nn.Sequential(*network_layers)
-
-    """
-    Different weight schedules.
-    """
-
-    def _constant_weight_schedule(self, step: int, **kwargs):
+    def _constant_weight_schedule(self, step: int, **kwargs: dict[str, Any]) -> float:
         return self.initial_weight
 
     def _step_weight_schedule(self, step: int, final_step: int, final_value: float, **kwargs: dict[str, Any]) -> float:

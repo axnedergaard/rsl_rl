@@ -36,7 +36,7 @@ class InformationReward:
             intrinsic_rewards = self.density.information(states)
         torch.clamp(intrinsic_rewards, min=self.min_reward, max=self.max_reward)
         intrinsic_rewards *= self.scaling
-        return intrinsic_rewards, states
+        return intrinsic_rewards
 
     def update(self, states):
         assert False # TODO.

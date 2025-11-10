@@ -18,7 +18,7 @@ from rsl_rl.algorithms import PPO
 from rsl_rl.env import VecEnv
 from rsl_rl.modules import ActorCritic, ActorCriticRecurrent, resolve_rnd_config, resolve_symmetry_config
 from rsl_rl.utils import resolve_obs_groups, store_code_state
-
+from rsl_rl.utils.rum.logger import Logger
 
 class OnPolicyRunner:
     """On-policy runner for training and evaluation of actor-critic methods."""
@@ -62,9 +62,9 @@ class OnPolicyRunner:
 
         # rum hack: Initialize rum script runner.
         self.rum_logger = None
-        if self.rum_cfg:
+        if rum_cfg:
             self.rum_logger = Logger(
-                cfg=self.rum_cfg,
+                cfg=rum_cfg,
                 manifold=None,
                 geometry=self.alg.geom,
                 density=self.alg.density,
@@ -143,7 +143,7 @@ class OnPolicyRunner:
                     if self.alg.info_reward is not None:
                         self.alg.info_reward.update_scaling(it, tot_iter)
                     # Extract intrinsic rewards (only for logging)
-                    intrinsic_rewards = self.alg.intrinsic_rewards if using_intrinsic_rewards else None
+                    intrinsic_rewards = self.alg.intrinsic_rewards if using_intrinsic_reward else None
                     # book keeping
                     if self.log_dir is not None:
                         if "episode" in extras:
@@ -151,7 +151,7 @@ class OnPolicyRunner:
                         elif "log" in extras:
                             ep_infos.append(extras["log"])
                         # Update rewards
-                        if using_intrinsic_rewards:
+                        if using_intrinsic_reward:
                             cur_ereward_sum += rewards
                             cur_ireward_sum += intrinsic_rewards  # type: ignore
                             cur_reward_sum += rewards + intrinsic_rewards
@@ -167,7 +167,7 @@ class OnPolicyRunner:
                         cur_reward_sum[new_ids] = 0
                         cur_episode_length[new_ids] = 0
                         # -- intrinsic and extrinsic rewards
-                        if self.alg.rnd:
+                        if using_intrinsic_reward:
                             erewbuffer.extend(cur_ereward_sum[new_ids][:, 0].cpu().numpy().tolist())
                             irewbuffer.extend(cur_ireward_sum[new_ids][:, 0].cpu().numpy().tolist())
                             cur_ereward_sum[new_ids] = 0
@@ -297,7 +297,7 @@ class OnPolicyRunner:
             for key, value in locs["loss_dict"].items():
                 log_string += f"""{f'Mean {key} loss:':>{pad}} {value:.4f}\n"""
             # -- Rewards
-            if hasattr(self.alg, "rnd") and self.alg.rnd:
+            if using_intrinsic_reward:
                 log_string += (
                     f"""{'Mean extrinsic reward:':>{pad}} {statistics.mean(locs['erewbuffer']):.2f}\n"""
                     f"""{'Mean intrinsic reward:':>{pad}} {statistics.mean(locs['irewbuffer']):.2f}\n"""

@@ -19,6 +19,7 @@ from rsl_rl.utils import string_to_callable
 # rum hack
 from rsl_rl.modules.info_reward import InformationReward
 from rsl_rl.modules.goal_reward import GoalReward
+import rum
 
 # The most horrible hack of all.
 def get_rnd_state_hack(obs, obs_groups):
@@ -72,6 +73,8 @@ class PPO:
             self.gpu_world_size = 1
 
         # RND components
+        self.rnd = None
+        self.rnd_optimizer = None # Warning: This variable is used to check whether RND rewards are used.
         if rnd_cfg is not None:
             # Extract parameters used in ppo
             rnd_lr = rnd_cfg.pop("learning_rate", 1e-3)
@@ -82,11 +85,10 @@ class PPO:
                 # Only need optimizer if not using info or goal rewards.
                 params = self.rnd.predictor.parameters()
                 self.rnd_optimizer = optim.Adam(params, lr=rnd_lr)
-        else:
-            self.rnd = None
-            self.rnd_optimizer = None
 
         # rum hack
+        self.info_reward = None
+        self.goal_reward = None
         self.geom = None
         self.density = None
         if rewarder_cfg is not None:
@@ -160,8 +162,6 @@ class PPO:
 
 
             # Create info or goal reward.
-            self.info_reward = None
-            self.goal_reward = None
             rewarder_cls_name = rewarder_cfg.pop('name')
             if rewarder_cls_name == 'DensityRewarder':
                 assert info_geom is not None
@@ -265,22 +265,25 @@ class PPO:
             # rum hack
             if self.info_reward:
                 rewarder = self.info_reward
+                rnd_state = obs['rnd_state']
                 if self.rnd: # Use RND embedding.
-                    rnd_state = self.rnd.target(obs).detach()
+                    rnd_state = self.rnd.target(rnd_state).detach()
                     rnd_state = rnd_state.reshape(
                         (-1, self.rnd.num_outputs)
                     )               
                 elif self.geom and isinstance(self.geom, rum.geometry.EmbeddingGeometry): # Use embedding geometry.
-                    rnd_state = self.geom.network(obs).detach()
+                    rnd_state = self.geom.network(rnd_state).detach()
                     rnd_state = rnd_state.reshape(
                         (-1, self.geom.embedding_dim) #this should be embedding dim
                     )
+                # Compute the intrinsic rewards
+                self.intrinsic_rewards = self.info_reward.get_intrinsic_reward(rnd_state)
             elif self.goal_reward:
-                rewarder = self.goal_reward
+                # Compute the intrinsic rewards
+                self.intrinsic_rewards = self.goal_reward.get_intrinsic_reward(obs['rnd_state'])
             else:
-                rewarder = self.rnd
-            # Compute the intrinsic rewards
-            self.intrinsic_rewards = self.rnd.get_intrinsic_reward(obs)
+                # Compute the intrinsic rewards
+                self.intrinsic_rewards = self.rnd.get_intrinsic_reward(obs)
             # Add intrinsic rewards to extrinsic rewards
             self.transition.rewards += self.intrinsic_rewards
 
@@ -380,7 +383,7 @@ class PPO:
             self.policy.act(obs_batch, masks=masks_batch, hidden_state=hidden_states_batch[0])
             actions_log_prob_batch = self.policy.get_actions_log_prob(actions_batch)
             # -- critic
-            value_batch = self.policy.evaluate(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
+            value_batch = self.policy.evaluate(obs_batch, masks=masks_batch, hidden_states=hidden_states_batch[1])
             # -- entropy
             # we only keep the entropy of the first augmentation (the original one)
             mu_batch = self.policy.action_mean[:original_batch_size]

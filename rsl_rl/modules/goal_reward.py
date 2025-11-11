@@ -11,6 +11,7 @@ class GoalReward:
         goal_update_freq: int,
         optimize_steps: int = 0,
         scaling: float = 1.0,
+        beta_schedule = None,
         device: str = "cpu",
         min_reward: float = -100.0,
         max_reward: float = 100.0,
@@ -21,7 +22,9 @@ class GoalReward:
         self.goal_update_freq = goal_update_freq
         self.geom = geom
         self.num_states = geom.dim
+        self.initial_scaling = scaling
         self.scaling = scaling
+        self.beta_schedule = beta_schedule
         self.rewarder = GoalRewarder(geom, goal_threshold, goal_update_freq, optimize_steps, device=device)
         self.min_reward = min_reward
         self.max_reward = max_reward
@@ -35,6 +38,10 @@ class GoalReward:
         intrinsic_rewards *= (1.0 - self.new_trajectory)
         intrinsic_rewards *= self.scaling
         return intrinsic_rewards
+
+    def update_scaling(self, iteration, max_iteration):
+        if self.beta_schedule is not None:
+            self.scaling = self.beta_schedule(self.initial_scaling, iteration, max_iteration)
 
     def update_goal(self, state):
         self.rewarder.update_goal(state)

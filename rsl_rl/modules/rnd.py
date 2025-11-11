@@ -34,6 +34,7 @@ class RandomNetworkDistillation(nn.Module):
         reward_normalization: bool = False,
         device: str = "cpu",
         weight_schedule: dict | None = None,
+        beta_schedule = None, # rum hack
     ) -> None:
         """Initialize the RND module.
 
@@ -84,6 +85,7 @@ class RandomNetworkDistillation(nn.Module):
         self.device = device
         self.state_normalization = state_normalization
         self.reward_normalization = reward_normalization
+        self.beta_schedule = beta_schedule
 
         # Normalization of input gates
         if state_normalization:
@@ -127,11 +129,11 @@ class RandomNetworkDistillation(nn.Module):
         intrinsic_reward = torch.linalg.norm(target_embedding - predictor_embedding, dim=1)
         # Normalize intrinsic reward
         intrinsic_reward = self.reward_normalizer(intrinsic_reward)
-        # Check the weight schedule
-        if self.weight_scheduler is not None:
-            self.weight = self.weight_scheduler(step=self.update_counter, **self.weight_scheduler_params)
-        else:
-            self.weight = self.initial_weight
+        # Check the weight schedule # rum hack: we use the rum schedulers instead.
+        #if self.weight_scheduler is not None:
+        #    self.weight = self.weight_scheduler(step=self.update_counter, **self.weight_scheduler_params)
+        #else:
+        #    self.weight = self.initial_weight
         # Scale intrinsic reward
         intrinsic_reward *= self.weight
 
@@ -155,6 +157,10 @@ class RandomNetworkDistillation(nn.Module):
     def get_rnd_state(self, obs: TensorDict) -> torch.Tensor:
         obs_list = [obs[obs_group] for obs_group in self.obs_groups["rnd_state"]]
         return torch.cat(obs_list, dim=-1)
+
+    def update_scaling(self, iteration, max_iteration):
+        if self.beta_schedule is not None:
+            self.weight = self.beta_schedule(self.initial_weight, iteration, max_iteration)
 
     def update_normalization(self, obs: TensorDict) -> None:
         # Normalize the state

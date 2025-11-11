@@ -72,6 +72,39 @@ class PPO:
             self.gpu_global_rank = 0
             self.gpu_world_size = 1
 
+        self.rnd = None
+        self.rnd_optimizer = None # Warning: This variable is used to check whether RND rewards are used.
+
+        # rum hack create schedules
+        alpha_schedule = None
+        beta_schedule = None
+        if rewarder_cfg is not None and 'alpha_schedule_cfg' in rewarder_cfg and rewarder_cfg['alpha_schedule_cfg']:
+            alpha_schedule_cfg = rewarder_cfg.pop('alpha_schedule_cfg')
+        else:
+            alpha_schedule_cfg = None
+        if rewarder_cfg is not None and 'beta_schedule_cfg' in rewarder_cfg and rewarder_cfg['beta_schedule_cfg']:
+            beta_schedule_cfg = rewarder_cfg.pop('beta_schedule_cfg')
+        elif rnd_cfg is not None and 'beta_schedule_cfg' in rnd_cfg and rnd_cfg['beta_schedule_cfg']:
+            beta_schedule_cfg = rnd_cfg.pop('beta_schedule_cfg')
+        else:
+            beta_schedule_cfg = None
+        if alpha_schedule_cfg:
+            schedule_cfg = alpha_schedule_cfg 
+            schedule_class_name = schedule_cfg.pop('name')
+            schedule_class = getattr(
+                rum.schedule,
+                schedule_class_name
+            )
+            alpha_schedule = schedule_class(**schedule_cfg)
+        if beta_schedule_cfg:
+            schedule_cfg = beta_schedule_cfg 
+            schedule_class_name = schedule_cfg.pop('name')
+            schedule_class = getattr(
+                rum.schedule,
+                schedule_class_name
+            )
+            beta_schedule = schedule_class(**schedule_cfg)
+
         # RND components
         self.rnd = None
         self.rnd_optimizer = None # Warning: This variable is used to check whether RND rewards are used.
@@ -79,7 +112,7 @@ class PPO:
             # Extract parameters used in ppo
             rnd_lr = rnd_cfg.pop("learning_rate", 1e-3)
             # Create RND module
-            self.rnd = RandomNetworkDistillation(device=self.device, **rnd_cfg)
+            self.rnd = RandomNetworkDistillation(device=self.device, **rnd_cfg, beta_schedule=beta_schedule)
             # Create RND optimizer
             if rewarder_cfg is None: # rum hack
                 # Only need optimizer if not using info or goal rewards.
@@ -131,16 +164,6 @@ class PPO:
                 )
                 info_geom = info_geom_class(**info_geom_cfg)
 
-            # Create intrinsic reward schedule.
-            schedule = None
-            if 'schedule_cfg' in rewarder_cfg:
-                schedule_cfg = rewarder_cfg.pop('schedule_cfg')
-                schedule_class_name = schedule_cfg.pop('name')
-                schedule_class = getattr(
-                    rum.schedule,
-                    schedule_class_name
-                )
-                schedule = schedule_class(**schedule_cfg)
 
             # Create occupancy estimator.
             if 'density_cfg' in rewarder_cfg:
@@ -166,11 +189,21 @@ class PPO:
             if rewarder_cls_name == 'DensityRewarder':
                 assert info_geom is not None
                 assert self.density is not None
-                self.info_reward = InformationReward(device=self.device, geom=self.geom, density=self.density, schedule=schedule, **rewarder_cfg)
+                self.info_reward = InformationReward(
+                    device=self.device, 
+                    geom=self.geom, 
+                    density=self.density, 
+                    alpha_schedule=alpha_schedule,
+                    beta_schedule=beta_schedule,
+                    **rewarder_cfg)
             elif rewarder_cls_name == 'GoalRewarder':
                 assert self.geom is not None and geom_cls_name == 'EmbeddingGeometry'
                 del rewarder_cfg['num_states'] # Not used by GoalReward as it is inferred from geom.
-                self.goal_reward = GoalReward(geom=self.geom, device=self.device, **rewarder_cfg)
+                self.goal_reward = GoalReward(
+                    geom=self.geom, 
+                    beta_schedule=beta_schedule,
+                    device=self.device, 
+                    **rewarder_cfg)
             else:
                 raise ValueError(rewarder_cls_name)
 

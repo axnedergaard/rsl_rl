@@ -30,6 +30,9 @@ def pathological_updates(density, **kwargs):
 def entropy(density, **kwargs):
   return density.entropy().item()
 
+def alpha(density, **kwargs):
+  return density.information_geometry.alpha
+
 def kmeans_loss(density, manifold, n=1e4, **kwargs):
   samples = torch.Tensor(manifold.sample(int(n)))
   assert samples.dim() == 2, f"Expected 2D tensor, got {samples.dim()}"

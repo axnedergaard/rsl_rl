@@ -127,6 +127,16 @@ class OnPolicyRunner:
         tot_iter = start_iter + num_learning_iterations
         for it in range(start_iter, tot_iter):
             start = time.time()
+
+            # rum hack
+            # adapt intrinsic reward schedule if needed
+            if self.alg.info_reward is not None:
+                self.alg.info_reward.update_scaling(it, tot_iter)
+            elif self.alg.goal_reward is not None:
+                self.alg.goal_reward.update_scaling(it, tot_iter)
+            elif self.alg.rnd_optimizer is not None:
+                self.alg.rnd.update_scaling(it, tot_iter)
+
             # Rollout
             with torch.inference_mode():
                 for _ in range(self.num_steps_per_env):
@@ -138,10 +148,6 @@ class OnPolicyRunner:
                     obs, rewards, dones = (obs.to(self.device), rewards.to(self.device), dones.to(self.device))
                     # process the step
                     self.alg.process_env_step(obs, rewards, dones, extras)
-                    # rum hack
-                    # adapt intrinsic reward schedule if needed
-                    if self.alg.info_reward is not None:
-                        self.alg.info_reward.update_scaling(it, tot_iter)
                     # Extract intrinsic rewards (only for logging)
                     intrinsic_rewards = self.alg.intrinsic_rewards if using_intrinsic_reward else None
                     # book keeping
